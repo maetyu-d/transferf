@@ -88,9 +88,15 @@ std::optional<juce::Point<float>> TransferFunctionComponent::toNormalizedPoint(j
 DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(DrawableTransferAUAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), transferFunctionComponent(p)
 {
-    setSize(760, 460);
+    setSize(820, 520);
 
     addAndMakeVisible(transferFunctionComponent);
+
+    const auto presetNames = DrawableTransferAUAudioProcessor::getPresetNames();
+    for (int i = 0; i < presetNames.size(); ++i)
+        presetBox.addItem(presetNames[i], i + 1);
+    presetBox.setSelectedId(1);
+    addAndMakeVisible(presetBox);
 
     bitDepthBox.addItem("8-bit", 1);
     bitDepthBox.addItem("12-bit", 2);
@@ -132,6 +138,33 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
         transferFunctionComponent.setBrushRadius(static_cast<int>(brushSlider.getValue()));
     };
     addAndMakeVisible(brushSlider);
+    transferFunctionComponent.setBrushRadius(static_cast<int>(brushSlider.getValue()));
+
+    smoothAmountSlider.setRange(0.05, 1.0, 0.01);
+    smoothAmountSlider.setValue(0.35);
+    smoothAmountSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    smoothAmountSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 20);
+    addAndMakeVisible(smoothAmountSlider);
+
+    smoothPassesSlider.setRange(1.0, 12.0, 1.0);
+    smoothPassesSlider.setValue(1.0);
+    smoothPassesSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    smoothPassesSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 46, 20);
+    addAndMakeVisible(smoothPassesSlider);
+
+    addAndMakeVisible(applyPresetButton);
+    applyPresetButton.onClick = [this]
+    {
+        applySelectedPreset();
+    };
+
+    addAndMakeVisible(smoothButton);
+    smoothButton.onClick = [this]
+    {
+        audioProcessor.smoothTransferCurve(static_cast<int>(smoothPassesSlider.getValue()),
+                                           static_cast<float>(smoothAmountSlider.getValue()));
+        transferFunctionComponent.repaint();
+    };
 
     addAndMakeVisible(resetButton);
     resetButton.onClick = [this]
@@ -143,32 +176,61 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
 
 void DrawableTransferAUAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xff111111));
+    g.fillAll(juce::Colour(0xff151719));
+    g.setColour(juce::Colour(0xff262a2e));
+    g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(8.0f), 10.0f);
+
     g.setColour(juce::Colours::white);
-    g.setFont(15.0f);
-    g.drawText("Drawable Transfer Function", 16, 10, 260, 24, juce::Justification::centredLeft);
+    g.setFont(16.0f);
+    g.drawText("Drawable Transfer Function", 20, 12, 300, 24, juce::Justification::centredLeft);
+
     g.setFont(13.0f);
-    g.setColour(juce::Colours::lightgrey);
-    g.drawText("Input", 16, 44, 50, 20, juce::Justification::centredLeft);
-    g.drawText("Output", 336, 44, 60, 20, juce::Justification::centredLeft);
-    g.drawText("Brush", 16, 74, 50, 20, juce::Justification::centredLeft);
+    g.setColour(juce::Colour(0xffd0d5db));
+    g.drawText("Preset", 20, 44, 60, 20, juce::Justification::centredLeft);
+    g.drawText("Input", 20, 74, 60, 20, juce::Justification::centredLeft);
+    g.drawText("Output", 400, 74, 70, 20, juce::Justification::centredLeft);
+    g.drawText("Brush", 20, 104, 60, 20, juce::Justification::centredLeft);
+    g.drawText("Smooth", 400, 104, 70, 20, juce::Justification::centredLeft);
 }
 
 void DrawableTransferAUAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(12);
-    auto topBar1 = area.removeFromTop(30);
-    auto topBar2 = area.removeFromTop(30);
-    auto topBar3 = area.removeFromTop(30);
-    area.removeFromTop(4);
+    auto area = getLocalBounds().reduced(18);
+    area.removeFromTop(28);
 
-    bitDepthBox.setBounds(topBar1.removeFromLeft(130).reduced(2));
-    interpolationButton.setBounds(topBar1.removeFromLeft(90).reduced(2));
-    resetButton.setBounds(topBar1.removeFromLeft(120).reduced(2));
+    auto rowPreset = area.removeFromTop(28);
+    auto rowGain = area.removeFromTop(28);
+    auto rowDraw = area.removeFromTop(28);
+    area.removeFromTop(6);
 
-    inputGainSlider.setBounds(topBar2.removeFromLeft(300).reduced(2));
-    outputGainSlider.setBounds(topBar2.removeFromLeft(300).reduced(2));
-    brushSlider.setBounds(topBar3.removeFromLeft(260).reduced(2));
+    presetBox.setBounds(rowPreset.removeFromLeft(240).reduced(2));
+    applyPresetButton.setBounds(rowPreset.removeFromLeft(110).reduced(2));
+    bitDepthBox.setBounds(rowPreset.removeFromLeft(120).reduced(2));
+    interpolationButton.setBounds(rowPreset.removeFromLeft(90).reduced(2));
+    resetButton.setBounds(rowPreset.removeFromLeft(120).reduced(2));
+
+    rowGain.removeFromLeft(60);
+    inputGainSlider.setBounds(rowGain.removeFromLeft(300).reduced(2));
+    rowGain.removeFromLeft(20);
+    rowGain.removeFromLeft(60);
+    outputGainSlider.setBounds(rowGain.removeFromLeft(300).reduced(2));
+
+    rowDraw.removeFromLeft(60);
+    brushSlider.setBounds(rowDraw.removeFromLeft(300).reduced(2));
+    rowDraw.removeFromLeft(20);
+    rowDraw.removeFromLeft(70);
+    smoothAmountSlider.setBounds(rowDraw.removeFromLeft(160).reduced(2));
+    smoothPassesSlider.setBounds(rowDraw.removeFromLeft(120).reduced(2));
+    smoothButton.setBounds(rowDraw.removeFromLeft(120).reduced(2));
 
     transferFunctionComponent.setBounds(area.reduced(2));
+}
+
+void DrawableTransferAUAudioProcessorEditor::applySelectedPreset()
+{
+    const int selectedIndex = juce::jlimit(0,
+                                           static_cast<int>(DrawableTransferAUAudioProcessor::getPresetNames().size()) - 1,
+                                           presetBox.getSelectedItemIndex());
+    audioProcessor.applyPreset(static_cast<DrawableTransferAUAudioProcessor::Preset>(selectedIndex));
+    transferFunctionComponent.repaint();
 }

@@ -34,13 +34,20 @@ public:
     void paint(juce::Graphics& g) override;
 
 private:
+    void applySelectedPreset();
+
     DrawableTransferAUAudioProcessor& audioProcessor;
     TransferFunctionComponent transferFunctionComponent;
+    juce::ComboBox presetBox;
     juce::ComboBox bitDepthBox;
     juce::ToggleButton interpolationButton { "Interp" };
     juce::Slider inputGainSlider;
     juce::Slider outputGainSlider;
     juce::Slider brushSlider;
+    juce::Slider smoothAmountSlider;
+    juce::Slider smoothPassesSlider;
+    juce::TextButton smoothButton { "Smooth Curve" };
+    juce::TextButton applyPresetButton { "Apply Preset" };
     juce::TextButton resetButton { "Reset Curve" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bitDepthAttachment;

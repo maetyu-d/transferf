@@ -8,6 +8,17 @@
 class DrawableTransferAUAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    enum class Preset
+    {
+        Linear = 0,
+        SoftClipTanh,
+        HardClip,
+        CubicDrive,
+        HalfWaveRectifier,
+        FullWaveRectifier,
+        SineFoldback
+    };
+
     DrawableTransferAUAudioProcessor();
     ~DrawableTransferAUAudioProcessor() override = default;
 
@@ -38,6 +49,9 @@ public:
     void setTransferPoint(float normalizedX, float normalizedY, int brushRadius = 2);
     void setTransferSegment(float fromX, float fromY, float toX, float toY, int brushRadius = 2);
     void resetTransferCurve();
+    void smoothTransferCurve(int passes = 1, float amount = 0.35f);
+    void applyPreset(Preset preset);
+    static juce::StringArray getPresetNames();
     int getSelectedBitDepth() const;
     bool isInterpolationEnabled() const;
     float getInputGainLinear() const;

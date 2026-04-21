@@ -5,6 +5,30 @@ namespace
 {
 constexpr int tableSize = 1024;
 constexpr auto curveProperty = "transferCurve";
+
+float presetTransferFunction(DrawableTransferAUAudioProcessor::Preset preset, float input)
+{
+    const float x = juce::jlimit(-1.0f, 1.0f, input);
+    switch (preset)
+    {
+        case DrawableTransferAUAudioProcessor::Preset::Linear:
+            return x;
+        case DrawableTransferAUAudioProcessor::Preset::SoftClipTanh:
+            return std::tanh(2.5f * x);
+        case DrawableTransferAUAudioProcessor::Preset::HardClip:
+            return juce::jlimit(-0.6f, 0.6f, x) / 0.6f;
+        case DrawableTransferAUAudioProcessor::Preset::CubicDrive:
+            return juce::jlimit(-1.0f, 1.0f, (1.5f * x) - (0.5f * x * x * x));
+        case DrawableTransferAUAudioProcessor::Preset::HalfWaveRectifier:
+            return juce::jmax(0.0f, x);
+        case DrawableTransferAUAudioProcessor::Preset::FullWaveRectifier:
+            return (std::abs(x) * 2.0f) - 1.0f;
+        case DrawableTransferAUAudioProcessor::Preset::SineFoldback:
+            return std::sin(juce::MathConstants<float>::pi * x);
+        default:
+            return x;
+    }
+}
 }
 
 DrawableTransferAUAudioProcessor::DrawableTransferAUAudioProcessor()
@@ -280,6 +304,52 @@ void DrawableTransferAUAudioProcessor::resetTransferCurve()
         const float x = static_cast<float>(i) / static_cast<float>(tableSize - 1);
         transferTable[static_cast<size_t>(i)] = (x * 2.0f) - 1.0f;
     }
+}
+
+void DrawableTransferAUAudioProcessor::smoothTransferCurve(int passes, float amount)
+{
+    const int clampedPasses = juce::jlimit(1, 32, passes);
+    const float clampedAmount = juce::jlimit(0.0f, 1.0f, amount);
+    const juce::SpinLock::ScopedLockType lock(tableLock);
+
+    Table smoothed = transferTable;
+    for (int pass = 0; pass < clampedPasses; ++pass)
+    {
+        for (int i = 1; i < tableSize - 1; ++i)
+        {
+            const float neighborAverage = 0.5f * (transferTable[static_cast<size_t>(i - 1)]
+                                                  + transferTable[static_cast<size_t>(i + 1)]);
+            smoothed[static_cast<size_t>(i)] = juce::jmap(clampedAmount, transferTable[static_cast<size_t>(i)], neighborAverage);
+        }
+
+        smoothed[0] = transferTable[0];
+        smoothed[static_cast<size_t>(tableSize - 1)] = transferTable[static_cast<size_t>(tableSize - 1)];
+        transferTable = smoothed;
+    }
+}
+
+void DrawableTransferAUAudioProcessor::applyPreset(Preset preset)
+{
+    const juce::SpinLock::ScopedLockType lock(tableLock);
+    for (int i = 0; i < tableSize; ++i)
+    {
+        const float xNorm = static_cast<float>(i) / static_cast<float>(tableSize - 1);
+        const float x = (xNorm * 2.0f) - 1.0f;
+        transferTable[static_cast<size_t>(i)] = presetTransferFunction(preset, x);
+    }
+}
+
+juce::StringArray DrawableTransferAUAudioProcessor::getPresetNames()
+{
+    return {
+        "Linear",
+        "Soft Clip (tanh)",
+        "Hard Clip",
+        "Cubic Drive",
+        "Half-Wave Rectifier",
+        "Full-Wave Rectifier",
+        "Sine Foldback"
+    };
 }
 
 int DrawableTransferAUAudioProcessor::getSelectedBitDepth() const
