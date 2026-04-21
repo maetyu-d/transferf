@@ -88,7 +88,7 @@ std::optional<juce::Point<float>> TransferFunctionComponent::toNormalizedPoint(j
 DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(DrawableTransferAUAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p), transferFunctionComponent(p)
 {
-    setSize(820, 520);
+    setSize(920, 560);
 
     addAndMakeVisible(transferFunctionComponent);
 
@@ -98,9 +98,12 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
     presetBox.setSelectedId(1);
     addAndMakeVisible(presetBox);
 
-    bitDepthBox.addItem("8-bit", 1);
-    bitDepthBox.addItem("12-bit", 2);
-    bitDepthBox.addItem("16-bit", 3);
+    bitDepthBox.addItem("4-bit", 1);
+    bitDepthBox.addItem("6-bit", 2);
+    bitDepthBox.addItem("8-bit", 3);
+    bitDepthBox.addItem("12-bit", 4);
+    bitDepthBox.addItem("16-bit", 5);
+    bitDepthBox.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(bitDepthBox);
 
     bitDepthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
@@ -109,14 +112,23 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
         bitDepthBox);
 
     addAndMakeVisible(interpolationButton);
+    interpolationButton.setButtonText("Interpolation");
     interpolationAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
         audioProcessor.getAPVTS(),
         "interpolation",
         interpolationButton);
 
+    addAndMakeVisible(offsetEnabledButton);
+    offsetEnabledButton.setButtonText("Audio Offset");
+    offsetEnabledAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
+        audioProcessor.getAPVTS(),
+        "offsetEnabled",
+        offsetEnabledButton);
+
     inputGainSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     inputGainSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
     inputGainSlider.setTextValueSuffix(" dB");
+    inputGainSlider.setSkewFactorFromMidPoint(0.0);
     addAndMakeVisible(inputGainSlider);
     inputGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.getAPVTS(), "inputGain", inputGainSlider);
@@ -124,9 +136,18 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
     outputGainSlider.setSliderStyle(juce::Slider::LinearHorizontal);
     outputGainSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
     outputGainSlider.setTextValueSuffix(" dB");
+    outputGainSlider.setSkewFactorFromMidPoint(0.0);
     addAndMakeVisible(outputGainSlider);
     outputGainAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.getAPVTS(), "outputGain", outputGainSlider);
+
+    offsetSlider.setSliderStyle(juce::Slider::LinearHorizontal);
+    offsetSlider.setTextBoxStyle(juce::Slider::TextBoxRight, false, 56, 20);
+    offsetSlider.setRange(-1.0, 1.0, 0.001);
+    offsetSlider.setTextValueSuffix(" ");
+    addAndMakeVisible(offsetSlider);
+    offsetAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.getAPVTS(), "audioOffset", offsetSlider);
 
     brushSlider.setRange(1.0, 20.0, 1.0);
     brushSlider.setValue(4.0);
@@ -158,6 +179,23 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
         applySelectedPreset();
     };
 
+    addAndMakeVisible(storeAButton);
+    storeAButton.onClick = [this] { audioProcessor.storeCurveToSlot(DrawableTransferAUAudioProcessor::CurveSlot::A); };
+    addAndMakeVisible(recallAButton);
+    recallAButton.onClick = [this]
+    {
+        audioProcessor.recallCurveFromSlot(DrawableTransferAUAudioProcessor::CurveSlot::A);
+        transferFunctionComponent.repaint();
+    };
+    addAndMakeVisible(storeBButton);
+    storeBButton.onClick = [this] { audioProcessor.storeCurveToSlot(DrawableTransferAUAudioProcessor::CurveSlot::B); };
+    addAndMakeVisible(recallBButton);
+    recallBButton.onClick = [this]
+    {
+        audioProcessor.recallCurveFromSlot(DrawableTransferAUAudioProcessor::CurveSlot::B);
+        transferFunctionComponent.repaint();
+    };
+
     addAndMakeVisible(smoothButton);
     smoothButton.onClick = [this]
     {
@@ -176,54 +214,80 @@ DrawableTransferAUAudioProcessorEditor::DrawableTransferAUAudioProcessorEditor(D
 
 void DrawableTransferAUAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colour(0xff151719));
-    g.setColour(juce::Colour(0xff262a2e));
-    g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(8.0f), 10.0f);
+    g.fillAll(juce::Colour(0xff111315));
+    auto panel = getLocalBounds().toFloat().reduced(10.0f);
+    g.setColour(juce::Colour(0xff1b1f23));
+    g.fillRoundedRectangle(panel, 10.0f);
+    g.setColour(juce::Colour(0xff2d333b));
+    g.drawRoundedRectangle(panel, 10.0f, 1.0f);
 
     g.setColour(juce::Colours::white);
-    g.setFont(16.0f);
-    g.drawText("Drawable Transfer Function", 20, 12, 300, 24, juce::Justification::centredLeft);
+    g.setFont(17.0f);
+    g.drawText("Drawable Transfer Function", 24, 14, 320, 24, juce::Justification::centredLeft);
 
     g.setFont(13.0f);
     g.setColour(juce::Colour(0xffd0d5db));
-    g.drawText("Preset", 20, 44, 60, 20, juce::Justification::centredLeft);
-    g.drawText("Input", 20, 74, 60, 20, juce::Justification::centredLeft);
-    g.drawText("Output", 400, 74, 70, 20, juce::Justification::centredLeft);
-    g.drawText("Brush", 20, 104, 60, 20, juce::Justification::centredLeft);
-    g.drawText("Smooth", 400, 104, 70, 20, juce::Justification::centredLeft);
+    g.drawText("Presets", 28, 48, 80, 20, juce::Justification::centredLeft);
+    g.drawText("A/B Compare", 560, 48, 100, 20, juce::Justification::centredLeft);
+    g.drawText("Input Gain", 28, 84, 90, 20, juce::Justification::centredLeft);
+    g.drawText("Output Gain", 480, 84, 100, 20, juce::Justification::centredLeft);
+    g.drawText("Offset Amount", 28, 120, 110, 20, juce::Justification::centredLeft);
+    g.drawText("Drawing", 28, 156, 90, 20, juce::Justification::centredLeft);
+    g.drawText("Smoothing", 480, 156, 90, 20, juce::Justification::centredLeft);
 }
 
 void DrawableTransferAUAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(18);
-    area.removeFromTop(28);
+    auto area = getLocalBounds().reduced(20);
+    area.removeFromTop(30);
 
-    auto rowPreset = area.removeFromTop(28);
-    auto rowGain = area.removeFromTop(28);
-    auto rowDraw = area.removeFromTop(28);
-    area.removeFromTop(6);
+    auto rowPreset = area.removeFromTop(32);
+    auto rowAB = area.removeFromTop(32);
+    auto rowGain = area.removeFromTop(32);
+    auto rowOffset = area.removeFromTop(32);
+    auto rowDraw = area.removeFromTop(32);
+    area.removeFromTop(8);
 
-    presetBox.setBounds(rowPreset.removeFromLeft(240).reduced(2));
-    applyPresetButton.setBounds(rowPreset.removeFromLeft(110).reduced(2));
-    bitDepthBox.setBounds(rowPreset.removeFromLeft(120).reduced(2));
-    interpolationButton.setBounds(rowPreset.removeFromLeft(90).reduced(2));
-    resetButton.setBounds(rowPreset.removeFromLeft(120).reduced(2));
+    rowPreset.removeFromLeft(110);
+    presetBox.setBounds(rowPreset.removeFromLeft(280).reduced(3));
+    rowPreset.removeFromLeft(8);
+    applyPresetButton.setBounds(rowPreset.removeFromLeft(120).reduced(3));
+    rowPreset.removeFromLeft(8);
+    bitDepthBox.setBounds(rowPreset.removeFromLeft(120).reduced(3));
+    rowPreset.removeFromLeft(8);
+    interpolationButton.setBounds(rowPreset.removeFromLeft(130).reduced(3));
+    rowPreset.removeFromLeft(8);
+    offsetEnabledButton.setBounds(rowPreset.removeFromLeft(120).reduced(3));
+    rowPreset.removeFromLeft(8);
+    resetButton.setBounds(rowPreset.removeFromLeft(110).reduced(3));
 
-    rowGain.removeFromLeft(60);
-    inputGainSlider.setBounds(rowGain.removeFromLeft(300).reduced(2));
+    rowAB.removeFromLeft(540);
+    storeAButton.setBounds(rowAB.removeFromLeft(90).reduced(3));
+    rowAB.removeFromLeft(8);
+    recallAButton.setBounds(rowAB.removeFromLeft(90).reduced(3));
+    rowAB.removeFromLeft(8);
+    storeBButton.setBounds(rowAB.removeFromLeft(90).reduced(3));
+    rowAB.removeFromLeft(8);
+    recallBButton.setBounds(rowAB.removeFromLeft(90).reduced(3));
+
+    rowGain.removeFromLeft(110);
+    inputGainSlider.setBounds(rowGain.removeFromLeft(330).reduced(3));
     rowGain.removeFromLeft(20);
-    rowGain.removeFromLeft(60);
-    outputGainSlider.setBounds(rowGain.removeFromLeft(300).reduced(2));
+    outputGainSlider.setBounds(rowGain.removeFromLeft(330).reduced(3));
 
-    rowDraw.removeFromLeft(60);
-    brushSlider.setBounds(rowDraw.removeFromLeft(300).reduced(2));
+    rowOffset.removeFromLeft(110);
+    offsetSlider.setBounds(rowOffset.removeFromLeft(330).reduced(3));
+
+    rowDraw.removeFromLeft(110);
+    brushSlider.setBounds(rowDraw.removeFromLeft(330).reduced(3));
     rowDraw.removeFromLeft(20);
-    rowDraw.removeFromLeft(70);
-    smoothAmountSlider.setBounds(rowDraw.removeFromLeft(160).reduced(2));
-    smoothPassesSlider.setBounds(rowDraw.removeFromLeft(120).reduced(2));
-    smoothButton.setBounds(rowDraw.removeFromLeft(120).reduced(2));
+    smoothAmountSlider.setBounds(rowDraw.removeFromLeft(170).reduced(3));
+    rowDraw.removeFromLeft(8);
+    smoothPassesSlider.setBounds(rowDraw.removeFromLeft(120).reduced(3));
+    rowDraw.removeFromLeft(8);
+    smoothButton.setBounds(rowDraw.removeFromLeft(130).reduced(3));
 
-    transferFunctionComponent.setBounds(area.reduced(2));
+    transferFunctionComponent.setBounds(area.reduced(4));
 }
 
 void DrawableTransferAUAudioProcessorEditor::applySelectedPreset()

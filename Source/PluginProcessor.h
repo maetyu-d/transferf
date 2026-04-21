@@ -8,6 +8,12 @@
 class DrawableTransferAUAudioProcessor final : public juce::AudioProcessor
 {
 public:
+    enum class CurveSlot
+    {
+        A = 0,
+        B
+    };
+
     enum class Preset
     {
         Linear = 0,
@@ -54,8 +60,12 @@ public:
     static juce::StringArray getPresetNames();
     int getSelectedBitDepth() const;
     bool isInterpolationEnabled() const;
+    bool isAudioOffsetEnabled() const;
     float getInputGainLinear() const;
     float getOutputGainLinear() const;
+    float getAudioOffsetAmount() const;
+    void storeCurveToSlot(CurveSlot slot);
+    void recallCurveFromSlot(CurveSlot slot);
     juce::AudioProcessorValueTreeState& getAPVTS();
 
 private:
@@ -68,11 +78,15 @@ private:
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float>* bitDepthParameter = nullptr;
     std::atomic<float>* interpolationParameter = nullptr;
+    std::atomic<float>* offsetEnabledParameter = nullptr;
     std::atomic<float>* inputGainParameter = nullptr;
     std::atomic<float>* outputGainParameter = nullptr;
+    std::atomic<float>* offsetAmountParameter = nullptr;
 
     mutable juce::SpinLock tableLock;
     Table transferTable {};
+    Table slotACurve {};
+    Table slotBCurve {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DrawableTransferAUAudioProcessor)
 };

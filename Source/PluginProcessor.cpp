@@ -5,6 +5,8 @@ namespace
 {
 constexpr int tableSize = 1024;
 constexpr auto curveProperty = "transferCurve";
+constexpr auto slotAProperty = "curveSlotA";
+constexpr auto slotBProperty = "curveSlotB";
 
 float presetTransferFunction(DrawableTransferAUAudioProcessor::Preset preset, float input)
 {
@@ -38,17 +40,22 @@ DrawableTransferAUAudioProcessor::DrawableTransferAUAudioProcessor()
 {
     bitDepthParameter = apvts.getRawParameterValue("bitDepth");
     interpolationParameter = apvts.getRawParameterValue("interpolation");
+    offsetEnabledParameter = apvts.getRawParameterValue("offsetEnabled");
     inputGainParameter = apvts.getRawParameterValue("inputGain");
     outputGainParameter = apvts.getRawParameterValue("outputGain");
+    offsetAmountParameter = apvts.getRawParameterValue("audioOffset");
     resetTransferCurve();
+    slotACurve = transferTable;
+    slotBCurve = transferTable;
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout DrawableTransferAUAudioProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     params.push_back(std::make_unique<juce::AudioParameterChoice>("bitDepth", "Bit Depth",
-                                                                  juce::StringArray { "8-bit", "12-bit", "16-bit" }, 1));
+                                                                  juce::StringArray { "4-bit", "6-bit", "8-bit", "12-bit", "16-bit" }, 3));
     params.push_back(std::make_unique<juce::AudioParameterBool>("interpolation", "Interpolation", true));
+    params.push_back(std::make_unique<juce::AudioParameterBool>("offsetEnabled", "Audio Offset Enabled", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "inputGain",
         "Input Gain",
@@ -61,6 +68,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout DrawableTransferAUAudioProce
         juce::NormalisableRange<float>(-24.0f, 24.0f, 0.01f),
         0.0f,
         "dB"));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "audioOffset",
+        "Audio Offset",
+        juce::NormalisableRange<float>(-1.0f, 1.0f, 0.001f),
+        0.0f));
     return { params.begin(), params.end() };
 }
 
@@ -172,6 +184,8 @@ void DrawableTransferAUAudioProcessor::processBlock(juce::AudioBuffer<float>& bu
 
     const int bitDepth = getSelectedBitDepth();
     const bool interpolate = isInterpolationEnabled();
+    const bool offsetEnabled = isAudioOffsetEnabled();
+    const float offsetAmount = getAudioOffsetAmount();
     const float inGain = getInputGainLinear();
     const float outGain = getOutputGainLinear();
 
@@ -180,7 +194,8 @@ void DrawableTransferAUAudioProcessor::processBlock(juce::AudioBuffer<float>& bu
         auto* channelData = buffer.getWritePointer(channel);
         for (int sampleIndex = 0; sampleIndex < buffer.getNumSamples(); ++sampleIndex)
         {
-            const float gainedInput = channelData[sampleIndex] * inGain;
+            const float offsetInput = channelData[sampleIndex] + (offsetEnabled ? offsetAmount : 0.0f);
+            const float gainedInput = offsetInput * inGain;
             const float input = juce::jlimit(-1.0f, 1.0f, gainedInput);
             const float normalized = (input * 0.5f) + 0.5f;
             const float shaped = lookupTableValue(localTable, normalized, interpolate);
@@ -216,6 +231,24 @@ void DrawableTransferAUAudioProcessor::getStateInformation(juce::MemoryBlock& de
 
     state.setProperty(curveProperty, curveData, nullptr);
 
+    juce::String slotAData;
+    juce::String slotBData;
+    {
+        const juce::SpinLock::ScopedLockType lock(tableLock);
+        for (size_t i = 0; i < slotACurve.size(); ++i)
+        {
+            if (i > 0)
+            {
+                slotAData << ",";
+                slotBData << ",";
+            }
+            slotAData << juce::String(slotACurve[i], 6);
+            slotBData << juce::String(slotBCurve[i], 6);
+        }
+    }
+    state.setProperty(slotAProperty, slotAData, nullptr);
+    state.setProperty(slotBProperty, slotBData, nullptr);
+
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
@@ -232,6 +265,7 @@ void DrawableTransferAUAudioProcessor::setStateInformation(const void* data, int
     const auto restoredState = juce::ValueTree::fromXml(*xmlState);
     apvts.replaceState(restoredState);
 
+    bool loadedMainCurve = false;
     if (restoredState.hasProperty(curveProperty))
     {
         auto curveData = restoredState[curveProperty].toString();
@@ -241,11 +275,32 @@ void DrawableTransferAUAudioProcessor::setStateInformation(const void* data, int
             const juce::SpinLock::ScopedLockType lock(tableLock);
             for (int i = 0; i < tableSize; ++i)
                 transferTable[static_cast<size_t>(i)] = tokens[i].getFloatValue();
-            return;
+            loadedMainCurve = true;
         }
     }
 
-    resetTransferCurve();
+    auto loadSlotCurve = [&restoredState](const juce::Identifier& key, Table& target)
+    {
+        if (!restoredState.hasProperty(key))
+            return;
+
+        auto curveData = restoredState[key].toString();
+        auto tokens = juce::StringArray::fromTokens(curveData, ",", "");
+        if (tokens.size() != tableSize)
+            return;
+
+        for (int i = 0; i < tableSize; ++i)
+            target[static_cast<size_t>(i)] = tokens[i].getFloatValue();
+    };
+
+    {
+        const juce::SpinLock::ScopedLockType lock(tableLock);
+        loadSlotCurve(slotAProperty, slotACurve);
+        loadSlotCurve(slotBProperty, slotBCurve);
+    }
+
+    if (!loadedMainCurve)
+        resetTransferCurve();
 }
 
 std::array<float, 1024> DrawableTransferAUAudioProcessor::getTransferTableCopy() const
@@ -357,9 +412,11 @@ int DrawableTransferAUAudioProcessor::getSelectedBitDepth() const
     const int choice = static_cast<int>(bitDepthParameter->load());
     switch (choice)
     {
-        case 0: return 8;
-        case 1: return 12;
-        case 2: return 16;
+        case 0: return 4;
+        case 1: return 6;
+        case 2: return 8;
+        case 3: return 12;
+        case 4: return 16;
         default: return 12;
     }
 }
@@ -367,6 +424,11 @@ int DrawableTransferAUAudioProcessor::getSelectedBitDepth() const
 bool DrawableTransferAUAudioProcessor::isInterpolationEnabled() const
 {
     return interpolationParameter->load() >= 0.5f;
+}
+
+bool DrawableTransferAUAudioProcessor::isAudioOffsetEnabled() const
+{
+    return offsetEnabledParameter->load() >= 0.5f;
 }
 
 float DrawableTransferAUAudioProcessor::getInputGainLinear() const
@@ -377,6 +439,26 @@ float DrawableTransferAUAudioProcessor::getInputGainLinear() const
 float DrawableTransferAUAudioProcessor::getOutputGainLinear() const
 {
     return juce::Decibels::decibelsToGain(outputGainParameter->load());
+}
+
+float DrawableTransferAUAudioProcessor::getAudioOffsetAmount() const
+{
+    return offsetAmountParameter->load();
+}
+
+void DrawableTransferAUAudioProcessor::storeCurveToSlot(CurveSlot slot)
+{
+    const juce::SpinLock::ScopedLockType lock(tableLock);
+    if (slot == CurveSlot::A)
+        slotACurve = transferTable;
+    else
+        slotBCurve = transferTable;
+}
+
+void DrawableTransferAUAudioProcessor::recallCurveFromSlot(CurveSlot slot)
+{
+    const juce::SpinLock::ScopedLockType lock(tableLock);
+    transferTable = (slot == CurveSlot::A) ? slotACurve : slotBCurve;
 }
 
 juce::AudioProcessorValueTreeState& DrawableTransferAUAudioProcessor::getAPVTS()

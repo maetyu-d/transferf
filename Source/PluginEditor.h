@@ -41,19 +41,27 @@ private:
     juce::ComboBox presetBox;
     juce::ComboBox bitDepthBox;
     juce::ToggleButton interpolationButton { "Interp" };
+    juce::ToggleButton offsetEnabledButton { "Offset" };
     juce::Slider inputGainSlider;
     juce::Slider outputGainSlider;
+    juce::Slider offsetSlider;
     juce::Slider brushSlider;
     juce::Slider smoothAmountSlider;
     juce::Slider smoothPassesSlider;
     juce::TextButton smoothButton { "Smooth Curve" };
     juce::TextButton applyPresetButton { "Apply Preset" };
+    juce::TextButton storeAButton { "Store A" };
+    juce::TextButton recallAButton { "Recall A" };
+    juce::TextButton storeBButton { "Store B" };
+    juce::TextButton recallBButton { "Recall B" };
     juce::TextButton resetButton { "Reset Curve" };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bitDepthAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> interpolationAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> offsetEnabledAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> offsetAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DrawableTransferAUAudioProcessorEditor)
 };
