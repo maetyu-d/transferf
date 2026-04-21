@@ -28,12 +28,18 @@ class DrawableTransferAUAudioProcessorEditor final : public juce::AudioProcessor
 {
 public:
     explicit DrawableTransferAUAudioProcessorEditor(DrawableTransferAUAudioProcessor&);
-    ~DrawableTransferAUAudioProcessorEditor() override = default;
+    ~DrawableTransferAUAudioProcessorEditor() override;
 
     void resized() override;
     void paint(juce::Graphics& g) override;
 
 private:
+    class MinimalLookAndFeel final : public juce::LookAndFeel_V4
+    {
+    public:
+        MinimalLookAndFeel();
+    };
+
     void applySelectedPreset();
 
     DrawableTransferAUAudioProcessor& audioProcessor;
@@ -62,6 +68,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> inputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> outputGainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> offsetAttachment;
+    MinimalLookAndFeel lookAndFeel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DrawableTransferAUAudioProcessorEditor)
 };
